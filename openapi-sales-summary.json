@@ -1,0 +1,874 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "模拟销售数据查询API",
+    "summary": "用于OpenAPI转MCP对照实验的三个只读销售API",
+    "description": "基于虚构销售数据、限定范围的业务问数API。复用现有只读SQLite查询逻辑，不接受任意SQL，不提供写入或删除能力。",
+    "version": "0.2.0"
+  },
+  "paths": {
+    "/sales/description": {
+      "get": {
+        "tags": [
+          "模拟销售查询"
+        ],
+        "summary": "读取模拟销售数据说明",
+        "description": "返回数据范围、字段含义、金额单位、可用月份、区域、产品及支持的查询范围。该接口不需要业务参数。",
+        "operationId": "get_sales_data_description",
+        "responses": {
+          "200": {
+            "description": "模拟销售数据的数据字典和查询边界。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesDataDescription"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未提供或提供了无效凭证。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务端读取失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SalesApiBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/sales/summary": {
+      "get": {
+        "tags": [
+          "模拟销售查询"
+        ],
+        "summary": "查询模拟销售额汇总",
+        "description": "按月份和区域查询模拟销售额，可选按产品筛选或按白名单维度分组。金额在结果中同时以整数分和两位小数的人民币元字符串返回。",
+        "operationId": "query_sales_summary",
+        "security": [
+          {
+            "SalesApiBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "description": "统计月份，格式YYYY-MM，例如2026-08。",
+              "title": "Month"
+            },
+            "description": "统计月份，格式YYYY-MM，例如2026-08。"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "华东",
+                "华南",
+                "华北"
+              ],
+              "type": "string",
+              "description": "销售区域：华东、华南或华北。",
+              "title": "Region"
+            },
+            "description": "销售区域：华东、华南或华北。"
+          },
+          {
+            "name": "product",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "P-100",
+                    "P-200",
+                    "P-300"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选虚构产品编号。",
+              "title": "Product"
+            },
+            "description": "可选虚构产品编号。"
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "month",
+                      "region",
+                      "product"
+                    ],
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选分组维度，可重复传入group_by；只允许month、region、product。",
+              "title": "Group By"
+            },
+            "description": "可选分组维度，可重复传入group_by；只允许month、region、product。"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "最大返回行数；当前模拟数据最多使用50。",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "最大返回行数；当前模拟数据最多使用50。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "销售汇总结果，或明确的无数据结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SalesSummarySuccess"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SalesSummaryNoData"
+                    }
+                  ],
+                  "title": "Response Query Sales Summary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未提供或提供了无效凭证。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数格式或取值不符合接口约束。"
+          },
+          "500": {
+            "description": "服务端查询执行失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales/comparison": {
+      "get": {
+        "tags": [
+          "模拟销售查询"
+        ],
+        "summary": "比较当月与上月模拟销售额",
+        "description": "按指定月份及可选区域、产品筛选，返回当月、上月、绝对变化和可计算时的环比百分比。计算由服务端完成，并区分上月无记录和上月销售额为零。",
+        "operationId": "compare_monthly_sales",
+        "security": [
+          {
+            "SalesApiBearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "description": "待比较月份，格式YYYY-MM，例如2026-08。",
+              "title": "Month"
+            },
+            "description": "待比较月份，格式YYYY-MM，例如2026-08。"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "华东",
+                    "华南",
+                    "华北"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选销售区域。",
+              "title": "Region"
+            },
+            "description": "可选销售区域。"
+          },
+          {
+            "name": "product",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "P-100",
+                    "P-200",
+                    "P-300"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选虚构产品编号。",
+              "title": "Product"
+            },
+            "description": "可选虚构产品编号。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "月度销售比较结果，或明确的当月无数据结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MonthlyComparisonSuccess"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MonthlyComparisonNoData"
+                    }
+                  ],
+                  "title": "Response Compare Monthly Sales"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未提供或提供了无效凭证。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "参数格式或取值不符合接口约束。"
+          },
+          "500": {
+            "description": "服务端查询执行失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiError"
+      },
+      "ChangeAmount": {
+        "properties": {
+          "sales_amount_cents": {
+            "type": "integer",
+            "title": "Sales Amount Cents"
+          },
+          "sales_amount_yuan": {
+            "type": "string",
+            "title": "Sales Amount Yuan"
+          },
+          "currency": {
+            "type": "string",
+            "const": "CNY",
+            "title": "Currency"
+          },
+          "change_rate_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Rate Percent"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sales_amount_cents",
+          "sales_amount_yuan",
+          "currency",
+          "change_rate_percent"
+        ],
+        "title": "ChangeAmount"
+      },
+      "ComparisonFilters": {
+        "properties": {
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ComparisonFilters"
+      },
+      "ErrorEnvelope": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ApiError"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorEnvelope"
+      },
+      "MonthlyComparisonNoData": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "no_data",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "previous_month": {
+            "type": "string",
+            "title": "Previous Month"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ComparisonFilters"
+          },
+          "data_classification": {
+            "type": "string",
+            "const": "虚构模拟数据",
+            "title": "Data Classification"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "month",
+          "previous_month",
+          "filters",
+          "data_classification"
+        ],
+        "title": "MonthlyComparisonNoData"
+      },
+      "MonthlyComparisonSuccess": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "comparison_status": {
+            "type": "string",
+            "enum": [
+              "comparable",
+              "previous_period_no_data",
+              "previous_period_zero"
+            ],
+            "title": "Comparison Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "previous_month": {
+            "type": "string",
+            "title": "Previous Month"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ComparisonFilters"
+          },
+          "current": {
+            "$ref": "#/components/schemas/PeriodAmount"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/PeriodAmount"
+          },
+          "change": {
+            "$ref": "#/components/schemas/ChangeAmount"
+          },
+          "data_classification": {
+            "type": "string",
+            "const": "虚构模拟数据",
+            "title": "Data Classification"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "comparison_status",
+          "message",
+          "month",
+          "previous_month",
+          "filters",
+          "current",
+          "previous",
+          "change",
+          "data_classification"
+        ],
+        "title": "MonthlyComparisonSuccess"
+      },
+      "PeriodAmount": {
+        "properties": {
+          "record_count": {
+            "type": "integer",
+            "title": "Record Count"
+          },
+          "sales_amount_cents": {
+            "type": "integer",
+            "title": "Sales Amount Cents"
+          },
+          "sales_amount_yuan": {
+            "type": "string",
+            "title": "Sales Amount Yuan"
+          },
+          "currency": {
+            "type": "string",
+            "const": "CNY",
+            "title": "Currency"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "record_count",
+          "sales_amount_cents",
+          "sales_amount_yuan",
+          "currency"
+        ],
+        "title": "PeriodAmount"
+      },
+      "ProductOption": {
+        "properties": {
+          "product_code": {
+            "type": "string",
+            "title": "Product Code"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "product_code",
+          "product_name"
+        ],
+        "title": "ProductOption"
+      },
+      "SalesDataDescription": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "data_classification": {
+            "type": "string",
+            "const": "虚构模拟数据",
+            "title": "Data Classification"
+          },
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "grain": {
+            "type": "string",
+            "title": "Grain"
+          },
+          "amount_definition": {
+            "type": "string",
+            "title": "Amount Definition"
+          },
+          "available_months": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Months"
+          },
+          "available_regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Regions"
+          },
+          "available_products": {
+            "items": {
+              "$ref": "#/components/schemas/ProductOption"
+            },
+            "type": "array",
+            "title": "Available Products"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Fields"
+          },
+          "supported_queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Queries"
+          },
+          "unsupported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unsupported"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "data_classification",
+          "dataset",
+          "grain",
+          "amount_definition",
+          "available_months",
+          "available_regions",
+          "available_products",
+          "fields",
+          "supported_queries",
+          "unsupported"
+        ],
+        "title": "SalesDataDescription"
+      },
+      "SalesFilters": {
+        "properties": {
+          "month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SalesFilters"
+      },
+      "SalesSummaryNoData": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "no_data",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SalesFilters"
+          },
+          "data_classification": {
+            "type": "string",
+            "const": "虚构模拟数据",
+            "title": "Data Classification"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "filters",
+          "data_classification"
+        ],
+        "title": "SalesSummaryNoData"
+      },
+      "SalesSummaryRow": {
+        "properties": {
+          "source_row_count": {
+            "type": "integer",
+            "title": "Source Row Count",
+            "description": "参与本行汇总的模拟数据记录数。"
+          },
+          "sales_amount_cents": {
+            "type": "integer",
+            "title": "Sales Amount Cents",
+            "description": "销售额，整数分。"
+          },
+          "sales_amount_yuan": {
+            "type": "string",
+            "title": "Sales Amount Yuan",
+            "description": "销售额，人民币元字符串，固定保留两位小数。"
+          },
+          "currency": {
+            "type": "string",
+            "const": "CNY",
+            "title": "Currency",
+            "description": "币种代码。"
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month",
+            "description": "按月份分组时返回，YYYY-MM。"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region",
+            "description": "按区域分组时返回。"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code",
+            "description": "按产品分组时返回。"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name",
+            "description": "按产品分组时返回。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_row_count",
+          "sales_amount_cents",
+          "sales_amount_yuan",
+          "currency"
+        ],
+        "title": "SalesSummaryRow"
+      },
+      "SalesSummarySuccess": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SalesFilters"
+          },
+          "group_by": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "month",
+                "region",
+                "product"
+              ]
+            },
+            "type": "array",
+            "title": "Group By"
+          },
+          "result_count": {
+            "type": "integer",
+            "title": "Result Count"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SalesSummaryRow"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "data_classification": {
+            "type": "string",
+            "const": "虚构模拟数据",
+            "title": "Data Classification"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "filters",
+          "group_by",
+          "result_count",
+          "results",
+          "data_classification"
+        ],
+        "title": "SalesSummarySuccess"
+      }
+    },
+    "securitySchemes": {
+      "SalesApiBearerAuth": {
+        "type": "http",
+        "description": "独立的销售API测试Bearer Token。OpenAPI只声明认证方式，不包含Token值。",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
